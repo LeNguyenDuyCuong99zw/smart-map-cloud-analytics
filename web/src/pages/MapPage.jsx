@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Map, { Marker, Popup, Source, Layer, GeolocateControl, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useAuth } from '../context/AuthContext';
@@ -38,6 +39,7 @@ function CustomMarker({ place, isSelected, onClick }) {
 
 export default function MapPage() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const [query, setQuery] = useState('');
   const [origin, setOrigin] = useState('');
@@ -51,6 +53,8 @@ export default function MapPage() {
   const [toast, setToast] = useState('');
   const [suggestions, setSuggestions] = useState({ origin: [], destination: [] });
   const [activeInput, setActiveInput] = useState(null); // 'origin' or 'destination'
+  const [originCoords, setOriginCoords] = useState('');
+  const [destinationCoords, setDestinationCoords] = useState('');
 
   const [viewState, setViewState] = useState({
     longitude: DEFAULT_CENTER.lng,
@@ -91,8 +95,13 @@ export default function MapPage() {
   };
 
   const handleInputChange = async (type, val) => {
-    if (type === 'origin') setOrigin(val);
-    else setDestination(val);
+    if (type === 'origin') {
+      setOrigin(val);
+      setOriginCoords(''); // Xóa tọa độ ẩn khi người dùng tự nhập tay
+    } else {
+      setDestination(val);
+      setDestinationCoords(''); // Xóa tọa độ ẩn khi người dùng tự nhập tay
+    }
 
     if (val.length > 2) {
       try {
@@ -109,18 +118,25 @@ export default function MapPage() {
 
   const selectSuggestion = (type, place) => {
     const coords = `${place.lat},${place.lng}`;
-    if (type === 'origin') setOrigin(coords);
-    else setDestination(coords);
+    if (type === 'origin') {
+      setOrigin(place.name);
+      setOriginCoords(coords);
+    } else {
+      setDestination(place.name);
+      setDestinationCoords(coords);
+    }
     setSuggestions(prev => ({ ...prev, [type]: [] }));
     setActiveInput(null);
   };
 
   const handleDirections = async (e) => {
     e.preventDefault();
-    if (!origin || !destination) return;
+    const start = originCoords || origin;
+    const end = destinationCoords || destination;
+    if (!start || !end) return;
     setLoading(true);
     try {
-      const data = await getDirections(origin, destination);
+      const data = await getDirections(start, end);
       setDirections(data);
       setPlaces([]); 
       
@@ -265,6 +281,41 @@ export default function MapPage() {
               />
             </Source>
           )}
+
+          {/* HIỂN THỊ ĐIỂM ĐI VÀ ĐIỂM ĐẾN KHI CÓ ĐƯỜNG ĐI */}
+          {directions?.geometry?.length > 0 && (
+            <>
+              {/* Điểm Đi (Origin) */}
+              <Marker 
+                longitude={directions.geometry[0][0]} 
+                latitude={directions.geometry[0][1]}
+                anchor="bottom"
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ backgroundColor: '#10B981', color: 'white', padding: '4px 10px', borderRadius: '20px', fontWeight: 'bold', fontSize: '12px', border: '2px solid white', boxShadow: '0 2px 6px rgba(0,0,0,0.3)', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
+                    A - Điểm đi
+                  </div>
+                  <div style={{ width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid white', marginTop: '-1px' }}></div>
+                  <div style={{ width: '10px', height: '10px', backgroundColor: '#10B981', borderRadius: '50%', border: '2px solid white', boxShadow: '0 0 4px rgba(0,0,0,0.4)', marginTop: '-2px' }}></div>
+                </div>
+              </Marker>
+
+              {/* Điểm Đến (Destination) */}
+              <Marker 
+                longitude={directions.geometry[directions.geometry.length - 1][0]} 
+                latitude={directions.geometry[directions.geometry.length - 1][1]}
+                anchor="bottom"
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ backgroundColor: '#EF4444', color: 'white', padding: '4px 10px', borderRadius: '20px', fontWeight: 'bold', fontSize: '12px', border: '2px solid white', boxShadow: '0 2px 6px rgba(0,0,0,0.3)', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
+                    B - Điểm đến
+                  </div>
+                  <div style={{ width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '6px solid white', marginTop: '-1px' }}></div>
+                  <div style={{ width: '10px', height: '10px', backgroundColor: '#EF4444', borderRadius: '50%', border: '2px solid white', boxShadow: '0 0 4px rgba(0,0,0,0.4)', marginTop: '-2px' }}></div>
+                </div>
+              </Marker>
+            </>
+          )}
         </Map>
       </div>
 
@@ -300,9 +351,16 @@ export default function MapPage() {
                 </div>
                 <span>MAPVIT</span>
               </div>
-              <button className="btn-icon-sm" onClick={logout} title="Đăng xuất">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {user?.email === 'admin@gmail.com' && (
+                  <button className="btn-icon-sm" onClick={() => navigate('/analytics')} title="Cloud Analytics" style={{ color: '#3A82F7' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                  </button>
+                )}
+                <button className="btn-icon-sm" onClick={logout} title="Đăng xuất">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                </button>
+              </div>
             </div>
             
             <div className="pill-tabs">

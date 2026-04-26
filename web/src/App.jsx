@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage     from './pages/LoginPage';
 import MapPage       from './pages/MapPage';
 import FavoritesPage from './pages/FavoritesPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 /** Route chỉ truy cập được khi đã đăng nhập */
 function PrivateRoute({ children }) {
@@ -40,6 +41,9 @@ export default function App() {
           } />
           <Route path="/favorites" element={
             <PrivateRoute><FavoritesPage /></PrivateRoute>
+          } />
+          <Route path="/analytics" element={
+            <PrivateRoute><AnalyticsPage /></PrivateRoute>
           } />
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>

@@ -17,6 +17,7 @@ import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 const FIREBASE_ERRORS = {
   'auth/user-not-found':       'Email không tồn tại',
   'auth/wrong-password':       'Mật khẩu không đúng',
+  'auth/invalid-credential':   'Tài khoản hoặc mật khẩu không đúng',
   'auth/email-already-in-use': 'Email đã được sử dụng',
   'auth/weak-password':        'Mật khẩu phải ít nhất 6 ký tự',
   'auth/invalid-email':        'Email không hợp lệ',
