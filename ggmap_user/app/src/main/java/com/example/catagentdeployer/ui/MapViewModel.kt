@@ -27,9 +27,11 @@ class MapViewModel : ViewModel() {
 
     private val _origin       = MutableStateFlow("")
     val origin: StateFlow<String> = _origin.asStateFlow()
+    private val _originCoords = MutableStateFlow("")
 
     private val _destination  = MutableStateFlow("")
     val destination: StateFlow<String> = _destination.asStateFlow()
+    private val _destinationCoords = MutableStateFlow("")
 
     private val _activeTab    = MutableStateFlow("search") // "search" | "directions"
     val activeTab: StateFlow<String> = _activeTab.asStateFlow()
@@ -61,8 +63,10 @@ class MapViewModel : ViewModel() {
 
     // ── Setters ───────────────────────────────────────────
     fun setQuery(q: String)       { _query.value = q }
-    fun setOrigin(o: String)      { _origin.value = o }
-    fun setDestination(d: String) { _destination.value = d }
+    fun setOrigin(o: String)      { _origin.value = o; _originCoords.value = "" }
+    fun setDestination(d: String) { _destination.value = d; _destinationCoords.value = "" }
+    fun setOriginCoords(c: String) { _originCoords.value = c }
+    fun setDestinationCoords(c: String) { _destinationCoords.value = c }
     fun setActiveTab(t: String)   { _activeTab.value = t }
     fun selectPlace(p: Place?)    { _selectedPlace.value = p }
     fun clearPlaces()             { _places.value = emptyList() }
@@ -88,7 +92,21 @@ class MapViewModel : ViewModel() {
         } catch (e: Exception) { "" }
     }
 
-    // ── Tìm kiếm địa điểm ────────────────────────────────
+    // ── Gợi ý địa điểm (Auto-suggest) ────────────────────
+    fun searchPlacesSuggest(q: String) {
+        if (q.length < 3) return
+        viewModelScope.launch {
+            try {
+                val token = getToken()
+                val response = RetrofitClient.api.searchPlaces(token, q)
+                if (response.isSuccessful) {
+                    _places.value = response.body()?.places ?: emptyList()
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
+    // ── Tìm kiếm địa điểm (Có lưu lịch sử) ────────────────
     fun searchPlaces() {
         if (_query.value.isBlank()) return
         viewModelScope.launch {
@@ -117,13 +135,25 @@ class MapViewModel : ViewModel() {
 
     // ── Lấy chỉ đường ────────────────────────────────────
     fun getDirections() {
-        if (_origin.value.isBlank() || _destination.value.isBlank()) return
+        var finalOrigin = if (_originCoords.value.isNotBlank()) _originCoords.value else _origin.value
+        var finalDest = if (_destinationCoords.value.isNotBlank()) _destinationCoords.value else _destination.value
+
+        // Hardcode "Vị trí của bạn" to HCMC coords for demo purposes
+        if (finalOrigin == "Vị trí của bạn" || finalOrigin.isEmpty()) {
+            finalOrigin = "10.7769,106.7009"
+        }
+
+        if (!finalOrigin.contains(",") || !finalDest.contains(",")) {
+            showToast("Vui lòng chọn địa điểm từ danh sách gợi ý để có tọa độ chính xác!")
+            return
+        }
+
         viewModelScope.launch {
             _loading.value = true
             _places.value = emptyList()
             try {
                 val token = getToken()
-                val response = RetrofitClient.api.getDirections(token, _origin.value, _destination.value)
+                val response = RetrofitClient.api.getDirections(token, finalOrigin, finalDest)
                 if (response.isSuccessful) {
                     val data = response.body()
                     _directions.value = data
