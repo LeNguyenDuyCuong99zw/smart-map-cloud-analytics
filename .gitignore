@@ -53,3 +53,17 @@ ggmap_user/.gradle/
 ggmap_user/app/build/
 capture.png
 image.png
+
+# Temporary files & Deployment scripts
+demo.txt
+deploy
+tai
+web-backend-update.md
+nginx.conf
+
+# Agent workspace & Firebase caches
+.agents/
+.claude/
+.firebase/
+skills-lock.json
+web/skills-lock.json

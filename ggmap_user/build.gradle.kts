@@ -1,7 +1,6 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
     dependencies {
-        classpath(libs.secrets.gradle.plugin)
         classpath("com.google.gms:google-services:4.4.2")       // Firebase
     }
 }

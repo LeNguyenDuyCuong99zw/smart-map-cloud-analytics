@@ -4,7 +4,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.compose.compiler)
-    id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
     id("com.google.gms.google-services")         // Firebase
     id("org.jetbrains.kotlin.plugin.serialization") // Kotlinx Serialization
 }
@@ -62,14 +61,9 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
-    // Google Maps
-    implementation(libs.play.services.location)
-    implementation(libs.google.maps.compose)
-    implementation("com.google.android.gms:play-services-maps:18.2.0")
-    implementation("com.google.maps.android:android-maps-utils:3.8.2")
-
-    // MapLibre (AWS Map rendering)
+    // MapLibre (AWS Map rendering + GeoJSON)
     implementation("org.maplibre.gl:android-sdk:11.5.1")
+    implementation("org.maplibre.gl:android-plugin-annotation-v9:3.0.0")
 
     // ViewModel + Navigation Compose
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
@@ -100,9 +94,4 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-}
-
-secrets {
-    propertiesFileName = "secrets.properties"
-    defaultPropertiesFileName = "local.defaults.properties"
 }

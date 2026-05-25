@@ -15,26 +15,20 @@ const rateLimit = require('express-rate-limit');
 const placesRouter    = require('./routes/places');
 const favoritesRouter = require('./routes/favorites');
 const historyRouter   = require('./routes/history');
+const analyticsRouter = require('./routes/analytics');
+
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Middleware bảo mật ─────────────────────────────────────────────────────
 app.use(helmet()); // Set HTTP security headers (CSP, HSTS, …)
+app.set('trust proxy', 1); // Trust the first proxy (e.g. Cloud Run, AWS LB, Nginx)
 
-// CORS — chỉ cho phép các origin trong biến môi trường
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173')
-  .split(',')
-  .map(o => o.trim());
-
+// CORS — Cho phép tất cả origin
 app.use(cors({
   origin: (origin, callback) => {
-    // Cho phép tool như Postman gọi không có origin
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked: ${origin}`));
-    }
+    callback(null, true);
   },
   credentials: true,
 }));
@@ -42,10 +36,14 @@ app.use(cors({
 // Rate limiter — chống spam / brute-force
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 phút
-  max: 200,                   // tối đa 200 request / cửa sổ
+  max: 2000,                  // tối đa 2000 request / cửa sổ
   standardHeaders: true,
   legacyHeaders:  false,
   message: { error: 'Too many requests, please try again later.' },
+  handler: (req, res, _next, options) => {
+    console.warn(`[RATE LIMIT] Exceeded by IP: ${req.ip}`);
+    res.status(options.statusCode).json(options.message);
+  },
 });
 app.use(limiter);
 
@@ -70,6 +68,8 @@ app.get('/health', (_req, res) => {
 app.use('/places',    placesRouter);
 app.use('/favorites', favoritesRouter);
 app.use('/history',   historyRouter);
+app.use('/analytics', analyticsRouter);
+
 
 // ── 404 handler ───────────────────────────────────────────────────────────
 app.use((_req, res) => {

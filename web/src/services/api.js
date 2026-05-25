@@ -20,13 +20,21 @@ const api = axios.create({
 
 // ── Request interceptor: gắn token ─────────────────────
 api.interceptors.request.use(async (config) => {
-  const user = auth.currentUser;
+  // Chờ Firebase auth khởi tạo nếu cần (đảm bảo currentUser không bị null oan)
+  const user = await new Promise((resolve) => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+
   if (user) {
     const token = await user.getIdToken();
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 }, (err) => Promise.reject(err));
+
 
 // ── Response interceptor: xử lý lỗi ───────────────────
 api.interceptors.response.use(
@@ -59,9 +67,9 @@ api.interceptors.response.use(
 export const searchPlaces = (query, lat, lng) =>
   api.get('/places', { params: { query, lat, lng } });
 
-/** Lấy chi tiết địa điểm */
-export const getPlaceDetails = (placeId) =>
-  api.get(`/places/${placeId}`);
+/** Lấy chi tiết địa điểm (làm giàu bằng Foursquare) */
+export const getPlaceDetails = (name, lat, lng) =>
+  api.get('/places/details', { params: { name, lat, lng } });
 
 /** Lấy chỉ đường */
 export const getDirections = (origin, destination, mode = 'driving') =>

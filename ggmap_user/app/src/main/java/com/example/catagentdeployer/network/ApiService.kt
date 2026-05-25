@@ -21,7 +21,7 @@ data class Place(
 
 data class PlacesResponse(val places: List<Place>, val total: Int)
 
-data class DirectionDistance(val text: String, val value: Int)
+data class DirectionDistance(val text: String, val value: Double)
 data class DirectionsResponse(
     val distance:         DirectionDistance?,
     val duration:         DirectionDistance?,

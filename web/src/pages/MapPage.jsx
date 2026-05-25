@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Map, { Marker, Popup, Source, Layer, GeolocateControl, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useAuth } from '../context/AuthContext';
-import { searchPlaces, getDirections, addFavorite, saveHistory } from '../services/api';
+import { searchPlaces, getDirections, addFavorite, saveHistory, getPlaceDetails } from '../services/api';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 const AWS_MAP_API_KEY = import.meta.env.VITE_AWS_MAP_API_KEY;
@@ -55,12 +55,16 @@ export default function MapPage() {
   const [activeInput, setActiveInput] = useState(null); // 'origin' or 'destination'
   const [originCoords, setOriginCoords] = useState('');
   const [destinationCoords, setDestinationCoords] = useState('');
+  const [detailedInfo, setDetailedInfo] = useState(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   const [viewState, setViewState] = useState({
     longitude: DEFAULT_CENTER.lng,
     latitude: DEFAULT_CENTER.lat,
     zoom: 13
   });
+
+  const searchTimeoutRef = useRef(null);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -85,7 +89,9 @@ export default function MapPage() {
         }));
       }
 
-      await saveHistory({ query, name: query });
+      // Lưu log với tiền tố Search: để phân biệt ở trang Admin
+      await saveHistory({ query, name: `Search: ${query}` });
+
       if (data.places.length === 0) showToast('Không tìm thấy địa điểm');
     } catch (err) {
       showToast(err.message);
@@ -94,7 +100,7 @@ export default function MapPage() {
     }
   };
 
-  const handleInputChange = async (type, val) => {
+  const handleInputChange = (type, val) => {
     if (type === 'origin') {
       setOrigin(val);
       setOriginCoords(''); // Xóa tọa độ ẩn khi người dùng tự nhập tay
@@ -103,14 +109,20 @@ export default function MapPage() {
       setDestinationCoords(''); // Xóa tọa độ ẩn khi người dùng tự nhập tay
     }
 
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
     if (val.length > 2) {
-      try {
-        const data = await searchPlaces(val);
-        setSuggestions(prev => ({ ...prev, [type]: data.places || [] }));
-        setActiveInput(type);
-      } catch (err) {
-        console.error(err);
-      }
+      searchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const data = await searchPlaces(val);
+          setSuggestions(prev => ({ ...prev, [type]: data.places || [] }));
+          setActiveInput(type);
+        } catch (err) {
+          console.error(err);
+        }
+      }, 400); // Đợi 400ms sau khi ngừng gõ mới gọi API
     } else {
       setSuggestions(prev => ({ ...prev, [type]: [] }));
     }
@@ -143,8 +155,9 @@ export default function MapPage() {
       // Gửi log Cloud khi tìm đường thành công
       await saveHistory({ 
         query: `Route: ${origin} to ${destination}`, 
-        name: `Directions to ${destination}` 
+        name: `Search: Directions to ${destination}` 
       });
+
 
       if (data.geometry && data.geometry.length > 0) {
         setViewState(prev => ({
@@ -175,6 +188,44 @@ export default function MapPage() {
     } catch (err) {
       showToast(err.message);
     }
+  };
+
+  // Fetch enriched details when a place is selected
+  const fetchEnrichedDetails = async (place) => {
+    if (!place) return;
+    setIsDetailLoading(true);
+    setDetailedInfo(null);
+    try {
+      const data = await getPlaceDetails(place.name, place.lat, place.lng);
+      setDetailedInfo(data);
+    } catch (err) {
+      console.error('Detail fetch error:', err);
+      setDetailedInfo({ ...place, rating: 4.0, photos: [] });
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
+
+  const handlePlaceSelect = (place) => {
+    setSelectedPlace(place);
+    setClickedPos(null);
+    fetchEnrichedDetails(place);
+    
+    setViewState(prev => ({
+      ...prev,
+      longitude: place.lng,
+      latitude: place.lat,
+      zoom: 16,
+      transitionDuration: 1200
+    }));
+
+    // Log history
+    saveHistory({ 
+      query: query || 'Select', 
+      name: `Place: ${place.name}`, 
+      lat: place.lat, 
+      lng: place.lng 
+    });
   };
 
   const routeGeojson = useMemo(() => {
@@ -247,17 +298,7 @@ export default function MapPage() {
               key={place.placeId}
               place={place}
               isSelected={selectedPlace?.placeId === place.placeId}
-              onClick={(p) => {
-                setSelectedPlace(p);
-                setClickedPos(null); // Xóa điểm click thủ công khi chọn một kết quả tìm kiếm
-                setViewState(prev => ({
-                  ...prev,
-                  longitude: p.lng,
-                  latitude: p.lat,
-                  zoom: 15,
-                  transitionDuration: 1000
-                }));
-              }}
+              onClick={(p) => handlePlaceSelect(p)}
             />
           ))}
 
@@ -317,6 +358,113 @@ export default function MapPage() {
             </>
           )}
         </Map>
+      </div>
+
+      {/* ── PLACE DETAIL SIDE PANEL ──────────────────── */}
+      <div className={`place-detail-panel ${!selectedPlace ? 'hidden' : ''}`}>
+        {isDetailLoading ? (
+          <div className="detail-content">
+            <div className="shimmer" style={{ height: 200, borderRadius: 12, marginBottom: 20 }}></div>
+            <div className="shimmer" style={{ height: 30, width: '70%', marginBottom: 10 }}></div>
+            <div className="shimmer" style={{ height: 20, width: '40%', marginBottom: 30 }}></div>
+            <div className="shimmer" style={{ height: 60, width: '100%', marginBottom: 20 }}></div>
+          </div>
+        ) : selectedPlace && (
+          <>
+            <div className="detail-hero">
+              <button className="btn-close-detail" onClick={() => setSelectedPlace(null)}>✕</button>
+              <img 
+                src={detailedInfo?.photos?.[0] || "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80"} 
+                alt={selectedPlace.name} 
+                className="detail-hero-img"
+              />
+            </div>
+            <div className="detail-content">
+              <h2 className="detail-name">{selectedPlace.name}</h2>
+              <div className="detail-rating-row">
+                <div className="stars-wrap">
+                  {[...Array(5)].map((_, i) => (
+                    <span key={i}>{i < Math.floor(detailedInfo?.rating || 4) ? '★' : '☆'}</span>
+                  ))}
+                </div>
+                <span className="rating-val">{detailedInfo?.rating?.toFixed(1) || '4.0'}</span>
+                <span style={{ color: 'var(--text-muted)' }}>•</span>
+                <span style={{ color: 'var(--primary)', fontSize: 13, fontWeight: 600 }}>ĐANG MỞ CỬA</span>
+              </div>
+
+              <div className="detail-actions">
+                <button className="action-btn-circle" onClick={() => {
+                   setOrigin('Vị trí của bạn');
+                   setDestination(`${selectedPlace.lat},${selectedPlace.lng}`);
+                   setActiveTab('directions');
+                }}>
+                  <div className="action-icon-wrap">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+                  </div>
+                  <span className="action-lbl">Đường đi</span>
+                </button>
+                <button className="action-btn-circle" onClick={() => handleSaveFavorite(selectedPlace)}>
+                  <div className="action-icon-wrap">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                  </div>
+                  <span className="action-lbl">Lưu lại</span>
+                </button>
+                <button className="action-btn-circle">
+                  <div className="action-icon-wrap">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                  </div>
+                  <span className="action-lbl">Gần đó</span>
+                </button>
+                <button className="action-btn-circle">
+                  <div className="action-icon-wrap">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                  </div>
+                  <span className="action-lbl">Chia sẻ</span>
+                </button>
+              </div>
+
+              <div className="detail-info-item">
+                <div className="info-icon">📍</div>
+                <div className="info-text">{selectedPlace.address}</div>
+              </div>
+              
+              {detailedInfo?.tel && (
+                <div className="detail-info-item">
+                  <div className="info-icon">📞</div>
+                  <div className="info-text">{detailedInfo.tel}</div>
+                </div>
+              )}
+
+              {detailedInfo?.website && (
+                <div className="detail-info-item">
+                  <div className="info-icon">🌐</div>
+                  <a href={detailedInfo.website} target="_blank" rel="noreferrer" className="info-text" style={{ color: 'var(--primary)', textDecoration: 'none' }}>
+                    {detailedInfo.website.replace('http://', '').replace('https://', '').split('/')[0]}
+                  </a>
+                </div>
+              )}
+
+              {detailedInfo?.description && (
+                <div className="detail-info-item" style={{ marginTop: 20 }}>
+                  <div className="info-text" style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>
+                    "{detailedInfo.description}"
+                  </div>
+                </div>
+              )}
+
+              {detailedInfo?.photos?.length > 1 && (
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Hình ảnh từ khách hàng</div>
+                  <div className="photo-gallery">
+                    {detailedInfo.photos.slice(1, 5).map((img, idx) => (
+                      <img key={idx} src={img} alt="gallery" className="gallery-img" />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── UI LAYER ────────────────────────────────── */}
@@ -515,12 +663,8 @@ export default function MapPage() {
                   <div 
                     key={place.placeId} 
                     className="art-place-item"
-                    onClick={() => {
-                      setSelectedPlace(place);
-                      setViewState(prev => ({
-                        ...prev, longitude: place.lng, latitude: place.lat, zoom: 15, transitionDuration: 1000
-                      }));
-                    }}
+                    onClick={() => handlePlaceSelect(place)}
+
                   >
                     <div className="place-icon-wrap">✧</div>
                     <div className="place-info">

@@ -53,6 +53,10 @@ async function getFavorites(req, res, next) {
 
     res.json({ favorites, total: favorites.length });
   } catch (err) {
+    if (err.message && err.message.includes('NOT_FOUND')) {
+      console.warn('⚠️ [Firebase] Firestore chưa được tạo hoặc không tìm thấy. Trả về mảng rỗng.');
+      return res.json({ favorites: [], total: 0 });
+    }
     next(err);
   }
 }

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import api from '../services/api';
+
 
 // URL API Lambda Analytics
 const ANALYTICS_API_URL = import.meta.env.VITE_AWS_ANALYTICS_URL || '';
@@ -12,6 +14,8 @@ export default function AnalyticsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeStatTab, setActiveStatTab] = useState('keywords'); // 'keywords' hoặc 'places'
+
 
   // KIỂM TRA QUYỀN ADMIN
   const ADMIN_EMAIL = "admin@gmail.com"; 
@@ -37,11 +41,12 @@ export default function AnalyticsPage() {
       if (!ANALYTICS_API_URL) {
         throw new Error("Chưa cấu hình URL API Analytics trong .env");
       }
-      const response = await axios.get(ANALYTICS_API_URL);
-      if (response.data && response.data.error === true) {
-         throw new Error(response.data.message || "Lỗi xử lý từ Lambda");
-      }
-      setData(response.data);
+      // const response = await axios.get(ANALYTICS_API_URL);
+      // Gọi qua backend proxy thay vì trực tiếp AWS để tránh CORS
+      const data = await api.get('/analytics');
+      
+      setData(data);
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -165,42 +170,96 @@ export default function AnalyticsPage() {
                   </div>
                </div>
 
-               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #E0E5F2' }}>
-                      <th style={{ padding: '16px 8px', textAlign: 'left', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Rank</th>
-                      <th style={{ padding: '16px 8px', textAlign: 'left', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Location Name</th>
-                      <th style={{ padding: '16px 8px', textAlign: 'left', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Engagement</th>
-                      <th style={{ padding: '16px 8px', textAlign: 'right', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Requests</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data?.topPlaces?.length > 0 ? (
-                      data.topPlaces.map((item, index) => {
-                         const percentage = data.totalRequests > 0 ? ((item.count / data.totalRequests) * 100).toFixed(1) : 0;
-                         return (
-                          <tr key={index} style={{ borderBottom: '1px solid #F4F7FE' }}>
-                            <td style={{ padding: '20px 8px', color: '#2B3674', fontWeight: '800', fontSize: '15px' }}>#{index + 1}</td>
-                            <td style={{ padding: '20px 8px', color: '#2B3674', fontWeight: '700', fontSize: '15px' }}>{item.name}</td>
-                            <td style={{ padding: '20px 8px', width: '40%' }}>
-                               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                 <div style={{ fontSize: '14px', color: '#2B3674', fontWeight: '800', width: '45px' }}>{percentage}%</div>
-                                 <div style={{ flex: 1, height: '8px', backgroundColor: '#E0E5F2', borderRadius: '4px', overflow: 'hidden' }}>
-                                   <div style={{ height: '100%', backgroundColor: '#4318FF', width: `${percentage}%`, borderRadius: '4px' }}></div>
-                                 </div>
-                               </div>
-                            </td>
-                            <td style={{ padding: '20px 8px', textAlign: 'right', color: '#2B3674', fontWeight: '800', fontSize: '15px' }}>{item.count}</td>
-                          </tr>
-                         );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: '#A3AED0', fontWeight: '700', fontSize: '16px' }}>No data available yet</td>
-                      </tr>
-                    )}
-                  </tbody>
-               </table>
+               {/* ── STATS TABS ── */}
+               <div style={{ display: 'flex', gap: '30px', borderBottom: '1px solid #E0E5F2', marginBottom: '30px' }}>
+                  <div 
+                    onClick={() => setActiveStatTab('keywords')}
+                    style={{ 
+                      paddingBottom: '16px', 
+                      cursor: 'pointer', 
+                      fontWeight: '700', 
+                      color: activeStatTab === 'keywords' ? '#4318FF' : '#A3AED0',
+                      borderBottom: activeStatTab === 'keywords' ? '3px solid #4318FF' : '3px solid transparent',
+                      transition: 'all 0.2s ease',
+                      fontSize: '15px'
+                    }}
+                  >
+                    Từ khóa tìm kiếm
+                  </div>
+                  <div 
+                    onClick={() => setActiveStatTab('places')}
+                    style={{ 
+                      paddingBottom: '16px', 
+                      cursor: 'pointer', 
+                      fontWeight: '700', 
+                      color: activeStatTab === 'places' ? '#01B574' : '#A3AED0',
+                      borderBottom: activeStatTab === 'places' ? '3px solid #01B574' : '3px solid transparent',
+                      transition: 'all 0.2s ease',
+                      fontSize: '15px'
+                    }}
+                  >
+                    Địa điểm được chọn
+                  </div>
+               </div>
+
+               <div style={{ minHeight: '400px' }}>
+               {(() => {
+                  const searchQueries = data?.topPlaces?.filter(item => item.name.startsWith('Search: ') || (!item.name.startsWith('Place: ') && item.name))
+                    .map(item => ({ ...item, displayName: item.name.replace('Search: ', '') })) || [];
+                  
+                  const selectedPlaces = data?.topPlaces?.filter(item => item.name.startsWith('Place: '))
+                    .map(item => ({ ...item, displayName: item.name.replace('Place: ', '') })) || [];
+
+                  const renderTable = (items, type) => {
+                    const iconColor = type === 'keywords' ? '#4318FF' : '#01B574';
+                    return (
+                      <div style={{ animation: 'fadeIn 0.4s ease' }}>
+                        <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #E0E5F2' }}>
+                              <th style={{ padding: '16px 8px', textAlign: 'left', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase' }}>Rank</th>
+                              <th style={{ padding: '16px 8px', textAlign: 'left', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase' }}>{type === 'places' ? 'Location Name' : 'Keyword'}</th>
+                              <th style={{ padding: '16px 8px', textAlign: 'left', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase' }}>Engagement</th>
+                              <th style={{ padding: '16px 8px', textAlign: 'right', fontSize: '13px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase' }}>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.length > 0 ? (
+                              items.map((item, index) => {
+                                const percentage = data.totalRequests > 0 ? ((item.count / data.totalRequests) * 100).toFixed(1) : 0;
+                                return (
+                                  <tr key={index} style={{ borderBottom: '1px solid #F4F7FE' }}>
+                                    <td style={{ padding: '18px 8px', color: '#2B3674', fontWeight: '800' }}>#{index + 1}</td>
+                                    <td style={{ padding: '18px 8px', color: '#2B3674', fontWeight: '700' }}>{item.displayName || item.name}</td>
+                                    <td style={{ padding: '18px 8px', width: '35%' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ fontSize: '13px', color: '#2B3674', fontWeight: '800', width: '40px' }}>{percentage}%</div>
+                                        <div style={{ flex: 1, height: '6px', backgroundColor: '#E0E5F2', borderRadius: '3px', overflow: 'hidden' }}>
+                                          <div style={{ height: '100%', backgroundColor: iconColor, width: `${percentage}%`, borderRadius: '3px' }}></div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '18px 8px', textAlign: 'right', color: '#2B3674', fontWeight: '800' }}>{item.count}</td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr><td colSpan="4" style={{ padding: '80px 0', textAlign: 'center', color: '#A3AED0', fontSize: '15px' }}>Chưa có dữ liệu thống kê cho mục này</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  };
+
+                  return activeStatTab === 'keywords' 
+                    ? renderTable(searchQueries, 'keywords') 
+                    : renderTable(selectedPlaces, 'places');
+               })()}
+               </div>
+
+
             </div>
           </div>
         )}

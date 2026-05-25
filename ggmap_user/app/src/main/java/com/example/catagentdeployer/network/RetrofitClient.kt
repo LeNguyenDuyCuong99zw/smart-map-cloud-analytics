@@ -19,7 +19,7 @@ object RetrofitClient {
 
     // ⚠️ Đổi thành URL Cloud Run khi deploy production
     // Local: http://10.0.2.2:3001 (emulator → localhost của máy)
-    private const val BASE_URL = "http://10.0.2.2:3001/"
+    private const val BASE_URL = "http://13.212.180.121/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY // Tắt NONE ở production

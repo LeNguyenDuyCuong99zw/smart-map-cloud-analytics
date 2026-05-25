@@ -1,3 +1,5 @@
+const axios = require('axios');
+
 const { 
   LocationClient, 
   SearchPlaceIndexForTextCommand,
@@ -15,6 +17,7 @@ const client = new LocationClient({
 
 const PLACE_INDEX_NAME = process.env.AWS_PLACE_INDEX_NAME || 'MapPlaceIndex';
 const ROUTE_CALCULATOR_NAME = process.env.AWS_ROUTE_CALCULATOR_NAME || 'MapRouteCalculator';
+const FOURSQUARE_API_KEY = process.env.FOURSQUARE_API_KEY;
 
 async function searchPlaces(req, res, next) {
   try {
@@ -123,8 +126,67 @@ async function getDirections(req, res, next) {
 }
 
 async function getPlaceDetails(req, res, next) {
-   // AWS Location service places index doesn't have a direct "details by ID" equivalent
-   res.status(501).json({ error: 'Not implemented for AWS Location Service' });
+  try {
+    const { name, lat, lng } = req.query;
+
+    if (!name || !lat || !lng) {
+      return res.status(400).json({ error: 'name, lat, and lng are required' });
+    }
+
+    // Call Foursquare Search to get enriched data
+    const response = await axios.get('https://api.foursquare.com/v3/places/search', {
+      params: {
+        query: name,
+        ll: `${lat},${lng}`,
+        radius: 100,
+        fields: 'fsq_id,name,location,photos,rating,popularity,price,stats,hours,description,website,tel',
+        limit: 1
+      },
+      headers: {
+        'Authorization': FOURSQUARE_API_KEY,
+        'Accept': 'application/json'
+      }
+    });
+
+    const fsqPlace = response.data.results?.[0];
+
+    if (!fsqPlace) {
+      return res.json({ 
+        name, 
+        address: 'N/A', 
+        rating: 4.0, 
+        photos: [],
+        message: 'No matching place found on Foursquare'
+      });
+    }
+
+    // Process photos to get full URLs
+    const photos = (fsqPlace.photos || []).map(p => `${p.prefix}original${p.suffix}`);
+
+    res.json({
+      fsq_id: fsqPlace.fsq_id,
+      name: fsqPlace.name,
+      address: fsqPlace.location?.formatted_address || 'N/A',
+      rating: fsqPlace.rating ? fsqPlace.rating / 2 : 4.2, // FS is out of 10, we want 5
+      photos: photos,
+      price: fsqPlace.price,
+      tel: fsqPlace.tel,
+      website: fsqPlace.website,
+      hours: fsqPlace.hours,
+      popularity: fsqPlace.popularity,
+      stats: fsqPlace.stats,
+      description: fsqPlace.description
+    });
+  } catch (err) {
+    console.error('Foursquare Error:', err.response?.data || err.message);
+    // Return basic info if Foursquare fails
+    res.json({ 
+      name: req.query.name, 
+      rating: 4.0, 
+      photos: [],
+      error: 'Failed to enrich data from Foursquare' 
+    });
+  }
 }
 
 module.exports = { searchPlaces, getDirections, getPlaceDetails };
