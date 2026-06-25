@@ -14,9 +14,10 @@ Dưới đây là danh sách các tính năng được liệt kê trong 2 Task, 
 - [ ] **Thuật toán Tìm đường A*:** Tự code thuật toán A* bằng JavaScript (tính khoảng cách Haversine) thay vì dùng API có sẵn.
 
 ### Giai đoạn 2: Trí tuệ Nhân tạo Nâng cao (Thuật toán Học thuật)
-- [ ] **Nâng cấp Chatbot (Goal-based Agent):** Thêm bộ nhớ (memory/session) để AI nhớ ngữ cảnh nhiều câu hội thoại liên tiếp.
-- [ ] **Smart Trip Planner (Giải bài toán CSP):** Xây dựng thuật toán xếp lịch trình thỏa mãn các ràng buộc về thời gian, địa điểm.
-- [ ] **Gợi ý Địa điểm bằng Naive Bayes:** Tự code bộ phân loại Naive Bayes (Machine Learning) dựa trên tần suất danh mục địa điểm yêu thích.
+- [ ] **Nâng cấp Chatbot (Goal-based Agent) - [Phụ trách: Du]:** Thêm bộ nhớ (memory/session/Redis) ở Backend để AI nhớ ngữ cảnh nhiều câu hội thoại liên tiếp và tích hợp vào UI.
+- [ ] **Smart Trip Planner (Phần Thuật toán CSP) - [Phụ trách: Hưng]:** Xây dựng logic thuật toán (Backend) giải quyết bài toán ràng buộc thời gian/địa điểm để xếp lịch trình tự động.
+- [ ] **Gợi ý Địa điểm (Thuật toán Naive Bayes) - [Phụ trách: Sanh]:** Tự code class NaiveBayes tính toán xác suất dựa trên lịch sử tìm kiếm từ Firestore và dữ liệu vị trí.
+- [ ] **Smart Trip Planner (Giao diện) & Tích hợp Frontend - [Phụ trách: Khánh]:** Thiết kế UI Timeline hiển thị lịch trình cho Trip Planner và tích hợp các dữ liệu AI của Giai đoạn 2 lên trang MapPage.
 
 ---
 
