@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import Map, { Marker, Popup, Source, Layer, GeolocateControl, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useAuth } from '../context/AuthContext';
-import { searchPlaces, getDirections, addFavorite, saveHistory, getPlaceDetails } from '../services/api';
+import { searchPlaces, getDirections, addFavorite, saveHistory, getPlaceDetails, suggestRouteWithAI, narrateRouteWithAI } from '../services/api';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+import AIChatPanel from '../components/AIChatPanel';
 
 const AWS_MAP_API_KEY = import.meta.env.VITE_AWS_MAP_API_KEY;
 const AWS_MAP_NAME = import.meta.env.VITE_AWS_MAP_NAME || 'Map';
@@ -58,6 +59,15 @@ export default function MapPage() {
   const [detailedInfo, setDetailedInfo] = useState(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
 
+  const [aiRoutePrompt, setAiRoutePrompt] = useState('');
+  const [aiRouteResult, setAiRouteResult] = useState(null);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulatedPos, setSimulatedPos] = useState(null);
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [aiActiveTab, setAiActiveTab] = useState('chat');
+  const [isListening, setIsListening] = useState(false);
+  const [voiceText, setVoiceText] = useState('');
+
   const [viewState, setViewState] = useState({
     longitude: DEFAULT_CENTER.lng,
     latitude: DEFAULT_CENTER.lat,
@@ -98,6 +108,98 @@ export default function MapPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVoiceNavigation = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast('Trình duyệt của bạn không hỗ trợ nhận diện giọng nói. Hãy dùng Chrome hoặc Safari.');
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      showToast('Trình duyệt không hỗ trợ định vị GPS.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'vi-VN';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setVoiceText('Đang nghe...');
+    };
+
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript;
+      setVoiceText(`"${transcript}"`);
+      setIsListening(false);
+      
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          setLoading(true);
+          const originObj = { lat: latitude, lng: longitude };
+          const data = await suggestRouteWithAI(transcript, originObj);
+          
+          let newDirections = null;
+          let destName = '';
+
+          if (data.route && data.route.geometry) {
+            newDirections = {
+              distance: { text: data.route.distanceText },
+              duration: { text: data.route.durationText },
+              geometry: data.route.geometry
+            };
+            setDirections(newDirections);
+            setOrigin('Vị trí của bạn');
+            destName = data.stops[data.stops.length - 1].name;
+            setDestination(destName);
+            setActiveTab('directions');
+          }
+          
+          if (data.stops) {
+            setPlaces(data.stops);
+            setViewState(prev => ({
+              ...prev,
+              longitude: data.stops[0].lng,
+              latitude: data.stops[0].lat,
+              zoom: 13,
+              transitionDuration: 1200
+            }));
+          }
+
+          if (newDirections) {
+             setShowAIPanel(false); // Close the AI panel to see the map
+             startSimulation(newDirections, 'Vị trí của bạn', destName);
+          }
+
+        } catch (err) {
+          showToast(err.message || "Lỗi khi tạo lộ trình bằng giọng nói");
+        } finally {
+          setLoading(false);
+          setVoiceText('');
+        }
+      }, (error) => {
+        setIsListening(false);
+        setVoiceText('');
+        showToast('Không lấy được vị trí hiện tại. Vui lòng cho phép quyền Vị trí.');
+      });
+    };
+
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      setVoiceText('');
+      showToast('Lỗi nhận diện giọng nói: ' + event.error);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
   };
 
   const handleInputChange = (type, val) => {
@@ -228,6 +330,122 @@ export default function MapPage() {
     });
   };
 
+  const handleSuggestRoute = async (e) => {
+    e.preventDefault();
+    const start = originCoords || origin;
+    if (!start || !aiRoutePrompt) return;
+    setLoading(true);
+    setAiRouteResult(null);
+    setPlaces([]);
+    setDirections(null);
+
+    try {
+      let originObj = { lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng };
+      if (typeof start === 'string' && start.includes(',')) {
+        const parts = start.split(',');
+        originObj = { lat: Number(parts[0]), lng: Number(parts[1]) };
+      } else {
+        originObj = { lat: viewState.latitude, lng: viewState.longitude };
+      }
+
+      const data = await suggestRouteWithAI(aiRoutePrompt, originObj);
+      setAiRouteResult(data);
+      
+      if (data.route && data.route.geometry) {
+        setDirections({
+          distance: { text: data.route.distanceText },
+          duration: { text: data.route.durationText },
+          geometry: data.route.geometry
+        });
+      }
+      
+      if (data.stops) {
+        setPlaces(data.stops);
+        setViewState(prev => ({
+          ...prev,
+          longitude: data.stops[0].lng,
+          latitude: data.stops[0].lat,
+          zoom: 13,
+          transitionDuration: 1200
+        }));
+      }
+
+      await saveHistory({ 
+        query: `AI Route: ${aiRoutePrompt}`, 
+        name: `AI Route: ${aiRoutePrompt}` 
+      });
+
+    } catch (err) {
+      showToast(err.message || "Lỗi khi tạo lộ trình AI");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const speak = (text) => {
+    if (!('speechSynthesis' in window)) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'vi-VN';
+    utterance.rate = 1.1;
+    const voices = window.speechSynthesis.getVoices();
+    const vnVoice = voices.find(v => v.lang.includes('vi') || v.lang.includes('VN'));
+    if (vnVoice) utterance.voice = vnVoice;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startSimulation = async (customDirections = null, customOrigin = null, customDestination = null) => {
+    const dir = customDirections || directions;
+    if (!dir?.geometry || dir.geometry.length < 2) return;
+    setIsSimulating(true);
+    showToast("Đang chuẩn bị lộ trình...");
+    
+    let scripts = {
+      start: "Bắt đầu lộ trình. Đi cẩn thận nhé.",
+      mid1: "Tiếp tục di chuyển theo đường hiện tại.",
+      mid2: "Sắp tới điểm đến rồi.",
+      end: "Bạn đã đến nơi."
+    };
+    
+    try {
+      const oName = customOrigin || origin || 'Điểm xuất phát';
+      const dName = customDestination || destination || 'Điểm đến';
+      const data = await narrateRouteWithAI(oName, dName, dir.distance?.text, dir.duration?.text);
+      if (data) scripts = data;
+    } catch (e) {
+      console.error("AI Narration error:", e);
+    }
+    
+    const coords = dir.geometry;
+    let i = 0;
+    const totalSteps = coords.length;
+    
+    speak(scripts.start);
+    
+    const interval = setInterval(() => {
+      if (i >= totalSteps) {
+        clearInterval(interval);
+        setIsSimulating(false);
+        setSimulatedPos(null);
+        speak(scripts.end);
+        return;
+      }
+      
+      setSimulatedPos({ lng: coords[i][0], lat: coords[i][1] });
+      setViewState(prev => ({
+        ...prev,
+        longitude: coords[i][0],
+        latitude: coords[i][1],
+        zoom: 16,
+        transitionDuration: 100
+      }));
+      
+      if (i === Math.floor(totalSteps / 3)) speak(scripts.mid1);
+      else if (i === Math.floor((totalSteps * 2) / 3)) speak(scripts.mid2);
+      
+      i += 3; // jump 3 coords for faster simulation
+    }, 500);
+  };
+
   const routeGeojson = useMemo(() => {
     if (!directions?.geometry) return null;
     return {
@@ -321,6 +539,18 @@ export default function MapPage() {
                 }}
               />
             </Source>
+          )}
+
+          {simulatedPos && (
+            <Marker longitude={simulatedPos.lng} latitude={simulatedPos.lat} anchor="center">
+              <div style={{ width: 60, height: 60, filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.5))' }}>
+                <DotLottieReact
+                  src="https://lottie.host/a10d6761-269f-4700-bdbc-6c7693050caf/SilgbdxVrh.lottie"
+                  loop
+                  autoplay
+                />
+              </div>
+            </Marker>
           )}
 
           {/* HIỂN THỊ ĐIỂM ĐI VÀ ĐIỂM ĐẾN KHI CÓ ĐƯỜNG ĐI */}
@@ -625,15 +855,32 @@ export default function MapPage() {
             )}
 
             {directions && (
-              <div className="route-summary">
-                <div className="route-stat">
-                  <div className="route-val">{directions.distance?.text}</div>
-                  <div className="route-lbl">Khoảng cách</div>
+              <div className="directions-result-container">
+                <div className="route-summary">
+                  <div className="route-stat">
+                    <div className="route-val">{directions.distance?.text}</div>
+                    <div className="route-lbl">Khoảng cách</div>
+                  </div>
+                  <div className="route-stat">
+                    <div className="route-val">{directions.duration?.text}</div>
+                    <div className="route-lbl">Thời gian</div>
+                  </div>
                 </div>
-                <div className="route-stat">
-                  <div className="route-val">{directions.duration?.text}</div>
-                  <div className="route-lbl">Thời gian</div>
-                </div>
+                <button 
+                  className="btn-art" 
+                  style={{ width: '100%', marginTop: '12px', backgroundColor: isSimulating ? '#ff4757' : '#2ed573' }}
+                  onClick={() => {
+                    if (isSimulating) {
+                       window.speechSynthesis.cancel();
+                       setIsSimulating(false);
+                       setSimulatedPos(null);
+                    } else {
+                       startSimulation();
+                    }
+                  }}
+                >
+                  {isSimulating ? 'Dừng đi đường' : '🎙️ Bắt đầu đi (VietMap AI)'}
+                </button>
               </div>
             )}
 
@@ -685,6 +932,140 @@ export default function MapPage() {
           </div>
         </div>
       </div>
+
+      {/* ── VOICE NAVIGATION OVERLAYS ────────────────────────── */}
+      {isListening && (
+        <div className="voice-overlay">
+          <div style={{ width: 300, height: 300 }}>
+            <DotLottieReact
+              src="https://lottie.host/5f7bd89e-1125-48f5-a55c-1235af709fce/rzz7e7XQZm.lottie"
+              loop
+              autoplay
+            />
+          </div>
+          <h2>Đang nghe...</h2>
+          <p>Hãy nói: "Chỉ đường đến Bến xe Chợ Lớn"</p>
+        </div>
+      )}
+      
+      {voiceText && !isListening && (
+         <div className="voice-overlay" style={{ background: 'rgba(0,0,0,0.85)' }}>
+            <h2>{voiceText}</h2>
+            <p>Đang xử lý lộ trình AI...</p>
+         </div>
+      )}
+
+      {/* ── AI Floating Button ──────────────────────── */}
+      {!showAIPanel && (
+        <div 
+          className="ai-floating-btn"
+          onClick={() => setShowAIPanel(true)}
+        >
+          <dotlottie-wc
+            src="https://lottie.host/2d26d578-a5b0-488e-94ec-2e0a67739026/rc4VOfvp8V.lottie"
+            style={{ width: "100%", height: "100%" }}
+            autoplay
+            loop
+          ></dotlottie-wc>
+        </div>
+      )}
+
+      {/* ── AI Floating Panel ───────────────────────── */}
+      {showAIPanel && (
+        <div className="ai-floating-panel">
+          <div className="panel-header" style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="brand-logo" style={{ fontSize: '16px' }}>
+              <span>MAPVIT AI</span>
+            </div>
+            <button className="btn-icon-sm" onClick={() => setShowAIPanel(false)}>✕</button>
+          </div>
+          <div className="pill-tabs" style={{ margin: '0 16px 16px 16px' }}>
+            <button 
+              className={`pill-tab ${aiActiveTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setAiActiveTab('chat')}
+              style={{ background: aiActiveTab === 'chat' ? 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)' : undefined, color: aiActiveTab === 'chat' ? 'white' : undefined, border: 'none' }}
+            >
+              Trợ lý AI ✧
+            </button>
+            <button 
+              className={`pill-tab ${aiActiveTab === 'route' ? 'active' : ''}`}
+              onClick={() => setAiActiveTab('route')}
+              style={{ background: aiActiveTab === 'route' ? 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)' : undefined, color: aiActiveTab === 'route' ? 'white' : undefined, border: 'none' }}
+            >
+              Lộ trình AI ✧
+            </button>
+          </div>
+          <div className="panel-content" style={{ display: 'flex', flexDirection: 'column', flex: 1, padding: '0 16px 16px', overflow: 'hidden' }}>
+            {aiActiveTab === 'route' && (
+              <form onSubmit={handleSuggestRoute} className="modern-input-group" style={{ paddingTop: 0 }}>
+                <div style={{ position: 'relative' }}>
+                  <div className="modern-input-wrapper">
+                    <input
+                      type="text"
+                      className="modern-input"
+                      placeholder="Điểm xuất phát..."
+                      style={{ paddingLeft: '16px' }}
+                      value={origin}
+                      onChange={e => handleInputChange('origin', e.target.value)}
+                    />
+                  </div>
+                  {activeInput === 'origin' && suggestions.origin.length > 0 && (
+                    <div className="suggestions-dropdown">
+                      {suggestions.origin.map(p => (
+                        <div key={p.placeId} className="suggestion-item" onClick={() => selectSuggestion('origin', p)}>
+                          <div className="suggestion-lottie">
+                            <DotLottieReact
+                              src="https://lottie.host/28afbcf7-aed2-42c2-aa94-65841d0e9c2b/FacU0GmScW.lottie"
+                              loop
+                              autoplay
+                            />
+                          </div>
+                          <div className="suggestion-info">
+                            <div className="suggestion-name">{p.name}</div>
+                            {p.address && <div className="suggestion-address">{p.address}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="modern-input-wrapper" style={{ marginTop: '8px' }}>
+                  <input
+                    type="text"
+                    className="modern-input"
+                    placeholder="Bạn muốn đi đâu? (VD: ăn vặt buổi tối)..."
+                    style={{ paddingLeft: '16px' }}
+                    value={aiRoutePrompt}
+                    onChange={e => setAiRoutePrompt(e.target.value)}
+                  />
+                </div>
+                
+                <button type="submit" className="btn-art" disabled={loading || !origin || !aiRoutePrompt}>
+                  {loading ? 'AI đang thiết kế...' : 'Tạo lộ trình AI ✧'}
+                </button>
+
+                {aiRouteResult && (
+                  <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px', color: '#fff', fontSize: '14px', lineHeight: '1.5' }}>
+                    <div style={{ color: '#FF8E53', fontWeight: 'bold', marginBottom: '8px' }}>Gợi ý từ AI:</div>
+                    {aiRouteResult.explanation}
+                  </div>
+                )}
+              </form>
+            )}
+
+            {aiActiveTab === 'chat' && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <AIChatPanel 
+                  userLocation={{ lat: viewState.latitude, lng: viewState.longitude }} 
+                  handleVoiceNavigation={handleVoiceNavigation}
+                  isListening={isListening}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {toast && <div className="art-toast">{toast}</div>}
     </div>

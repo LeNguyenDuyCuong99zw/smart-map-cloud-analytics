@@ -99,4 +99,16 @@ export const getHistory = (limit = 20) =>
 export const clearHistory = () =>
   api.delete('/history');
 
+/** Giao tiếp với AI Chatbot */
+export const chatWithAI = (message, locationContext) =>
+  api.post('/ai/chat', { message, locationContext });
+
+/** Gợi ý lộ trình AI */
+export const suggestRouteWithAI = (prompt, origin) =>
+  api.post('/ai/suggest-route', { prompt, origin });
+
+/** Sinh kịch bản giọng nói cho lộ trình */
+export const narrateRouteWithAI = (originName, destinationName, distanceText, durationText) =>
+  api.post('/ai/narrate-route', { originName, destinationName, distanceText, durationText });
+
 export default api;

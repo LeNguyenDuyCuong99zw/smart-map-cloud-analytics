@@ -16,6 +16,7 @@ const placesRouter    = require('./routes/places');
 const favoritesRouter = require('./routes/favorites');
 const historyRouter   = require('./routes/history');
 const analyticsRouter = require('./routes/analytics');
+const aiRouter        = require('./routes/ai');
 
 
 const app  = express();
@@ -69,6 +70,7 @@ app.use('/places',    placesRouter);
 app.use('/favorites', favoritesRouter);
 app.use('/history',   historyRouter);
 app.use('/analytics', analyticsRouter);
+app.use('/ai',        aiRouter);
 
 
 // ── 404 handler ───────────────────────────────────────────────────────────
