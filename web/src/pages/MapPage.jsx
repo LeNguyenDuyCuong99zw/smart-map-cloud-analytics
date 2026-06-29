@@ -1,12 +1,20 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Map, { Marker, Popup, Source, Layer, GeolocateControl, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useAuth } from '../context/AuthContext';
-import { searchPlaces, getDirections, addFavorite, saveHistory, getPlaceDetails, suggestRouteWithAI, narrateRouteWithAI } from '../services/api';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import AIChatPanel from '../components/AIChatPanel';
-
+import {
+  searchPlaces,
+  getDirections,
+  addFavorite,
+  saveHistory,
+  getPlaceDetails,
+  suggestRouteWithAI,
+  narrateRouteWithAI,
+  getRecommendations
+} from "../services/api";
 const AWS_MAP_API_KEY = import.meta.env.VITE_AWS_MAP_API_KEY;
 const AWS_MAP_NAME = import.meta.env.VITE_AWS_MAP_NAME || 'Map';
 const AWS_REGION = import.meta.env.VITE_AWS_REGION || 'ap-southeast-1';
@@ -39,6 +47,20 @@ function CustomMarker({ place, isSelected, onClick }) {
 }
 
 export default function MapPage() {
+  const [recommendations, setRecommendations] = useState([]);
+
+const loadRecommendations = async () => {
+    try {
+        const data = await getRecommendations();
+        setRecommendations(data.recommendations || []);
+    } catch (err) {
+        console.log(err);
+    }
+};
+
+useEffect(() => {
+    loadRecommendations();
+}, []);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -100,7 +122,19 @@ export default function MapPage() {
       }
 
       // Lưu log với tiền tố Search: để phân biệt ở trang Admin
-      await saveHistory({ query, name: `Search: ${query}` });
+      if (data.places && data.places.length > 0) {
+    const firstPlace = data.places[0];
+
+    await saveHistory({
+        query,
+        placeId: firstPlace.placeId,
+        name: firstPlace.name,
+        lat: firstPlace.lat,
+        lng: firstPlace.lng,
+        category: firstPlace.category
+    });
+    await loadRecommendations();
+}
 
       if (data.places.length === 0) showToast('Không tìm thấy địa điểm');
     } catch (err) {
@@ -756,7 +790,35 @@ export default function MapPage() {
               </button>
             </div>
           </div>
+<div className="recommend-box">
+    <h3>⭐ Gợi ý cho bạn</h3>
 
+    {recommendations.length === 0 ? (
+        <p>Chưa có gợi ý</p>
+    ) : (
+        recommendations.map(place => (
+            <div
+                key={place.placeId}
+                className="recommend-item"
+                onClick={() => {
+                    setSelectedPlace(place);
+
+                    setViewState(prev => ({
+                        ...prev,
+                        longitude: place.lng,
+                        latitude: place.lat,
+                        zoom: 15,
+                        transitionDuration: 1000
+                    }));
+                }}
+            >
+                <strong>{place.name}</strong>
+                <br />
+                <small>{place.address}</small>
+            </div>
+        ))
+    )}
+</div>
           <div className="panel-content">
             {activeTab === 'search' && (
               <form onSubmit={handleSearch} className="modern-search-row">

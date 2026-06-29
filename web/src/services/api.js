@@ -17,6 +17,9 @@ const api = axios.create({
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
+/** Gợi ý địa điểm bằng Naive Bayes */
+export const getRecommendations = () =>
+  api.get('/recommend');
 
 // ── Request interceptor: gắn token ─────────────────────
 api.interceptors.request.use(async (config) => {

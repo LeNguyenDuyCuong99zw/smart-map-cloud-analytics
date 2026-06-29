@@ -47,18 +47,35 @@ async function searchPlaces(req, res, next) {
     const data = await client.send(command);
 
     const places = (data.Results || []).map(r => {
-      const p = r.Place;
-      return {
-        placeId: p.PlaceId || Math.random().toString(), 
-        name: p.Label ? p.Label.split(',')[0] : 'Unknown Place',
+    const p = r.Place;
+
+    // Xác định category từ tên địa điểm
+    let category = "other";
+    const label = (p.Label || "").toLowerCase();
+
+    if (label.includes("coffee") || label.includes("cafe")) {
+        category = "coffee";
+    } else if (label.includes("restaurant") || label.includes("nhà hàng")) {
+        category = "restaurant";
+    } else if (label.includes("hotel") || label.includes("khách sạn")) {
+        category = "hotel";
+    } else if (label.includes("hospital") || label.includes("bệnh viện")) {
+        category = "hospital";
+    } else if (label.includes("school") || label.includes("trường")) {
+        category = "school";
+    }
+
+    return {
+        placeId: p.PlaceId || Math.random().toString(),
+        name: p.Label ? p.Label.split(",")[0] : "Unknown Place",
         address: p.Label,
         lat: p.Geometry.Point[1],
         lng: p.Geometry.Point[0],
-        // Mock fields to keep frontend compatible
+        category,
         rating: 4.5,
         isOpen: true
-      };
-    });
+    };
+});
 
     res.json({ places, total: places.length });
   } catch (err) {

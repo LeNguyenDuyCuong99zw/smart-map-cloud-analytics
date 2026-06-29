@@ -66,7 +66,7 @@ async function getHistory(req, res, next) {
 async function saveHistory(req, res, next) {
   try {
     const uid = req.user.uid;
-    const { query, placeId, name, lat, lng } = req.body;
+    const { query, placeId, name, lat, lng, category } = req.body;
 
     if (!query && !name) {
       return res.status(400).json({ error: '"query" hoặc "name" là bắt buộc' });
@@ -84,6 +84,7 @@ async function saveHistory(req, res, next) {
         name:       name    || query,
         lat:        lat     || null,
         lng:        lng     || null,
+        category: category || "unknown",
         searchedAt: new Date(),
       });
       firebaseHistoryId = docRef.id;

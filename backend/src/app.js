@@ -11,13 +11,14 @@ const helmet  = require('helmet');
 const morgan  = require('morgan');
 const rateLimit = require('express-rate-limit');
 
+
 // ── Import routes ──────────────────────────────────────────────────────────
 const placesRouter    = require('./routes/places');
 const favoritesRouter = require('./routes/favorites');
 const historyRouter   = require('./routes/history');
 const analyticsRouter = require('./routes/analytics');
 const aiRouter        = require('./routes/ai');
-
+const recommendRouter = require('./routes/recommend'); // thêm dòng này
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -71,7 +72,7 @@ app.use('/favorites', favoritesRouter);
 app.use('/history',   historyRouter);
 app.use('/analytics', analyticsRouter);
 app.use('/ai',        aiRouter);
-
+app.use('/recommend', recommendRouter); // thêm dòng này
 
 // ── 404 handler ───────────────────────────────────────────────────────────
 app.use((_req, res) => {
