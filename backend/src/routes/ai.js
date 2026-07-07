@@ -24,4 +24,10 @@ router.post('/suggest-route', aiController.suggestRoute);
 // POST /ai/narrate-route
 router.post('/narrate-route', aiController.narrateRoute);
 
+// POST /ai/local-route — Thuật toán A* tìm đường (tự cài đặt)
+router.post('/local-route', aiController.localRoute);
+
+// POST /ai/plan-trip — CSP Smart Trip Planner (Lên lịch trình thông minh)
+router.post('/plan-trip', aiController.planTrip);
+
 module.exports = router;

@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useAuth } from '../context/AuthContext';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import AIChatPanel from '../components/AIChatPanel';
+import TripPlanner from '../components/TripPlanner';
 import {
   searchPlaces,
   getDirections,
@@ -13,7 +14,8 @@ import {
   getPlaceDetails,
   suggestRouteWithAI,
   narrateRouteWithAI,
-  getRecommendations
+  getRecommendations,
+  findLocalRoute
 } from "../services/api";
 const AWS_MAP_API_KEY = import.meta.env.VITE_AWS_MAP_API_KEY;
 const AWS_MAP_NAME = import.meta.env.VITE_AWS_MAP_NAME || 'Map';
@@ -89,6 +91,7 @@ useEffect(() => {
   const [aiActiveTab, setAiActiveTab] = useState('chat');
   const [isListening, setIsListening] = useState(false);
   const [voiceText, setVoiceText] = useState('');
+  const [showTripPlanner, setShowTripPlanner] = useState(false);
 
   const [viewState, setViewState] = useState({
     longitude: DEFAULT_CENTER.lng,
@@ -277,23 +280,76 @@ useEffect(() => {
     setActiveInput(null);
   };
 
-  const handleDirections = async (e) => {
-    e.preventDefault();
+  const handleDirections = async (e, algo = 'AWS') => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     const start = originCoords || origin;
     const end = destinationCoords || destination;
     if (!start || !end) return;
+
+    if (algo === 'A*') {
+      const startParts = originCoords ? originCoords.split(',') : null;
+      const endParts = destinationCoords ? destinationCoords.split(',') : null;
+      
+      if (!startParts || startParts.length !== 2 || !endParts || endParts.length !== 2) {
+        showToast('Vui lòng chọn địa điểm từ gợi ý để lấy tọa độ GPS cho thuật toán A*.');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const waypoints = [
+          { id: 'start', name: origin, lat: Number(startParts[0]), lng: Number(startParts[1]) },
+          { id: 'end', name: destination, lat: Number(endParts[0]), lng: Number(endParts[1]) }
+        ];
+        const data = await findLocalRoute(waypoints);
+        const baseDuration = Math.round(data.totalDistanceKm * 2);
+        const finalDuration = Math.round(baseDuration * (data.trafficFactor || 1.0));
+        setDirections({
+          distance: { text: data.totalDistanceText },
+          duration: { text: `${finalDuration} phút` }, 
+          geometry: data.geometry,
+          algorithm: 'A*',
+          trafficFactor: data.trafficFactor || 1.0,
+          congested: data.congested || false
+        });
+        setPlaces([]);
+
+        await saveHistory({ 
+          query: `Route (A*): ${origin} to ${destination}`, 
+          name: `A* Route to ${destination}` 
+        });
+
+        if (data.geometry && data.geometry.length > 0) {
+          setViewState(prev => ({
+            ...prev,
+            longitude: data.geometry[0][0],
+            latitude: data.geometry[0][1],
+            zoom: 13,
+            transitionDuration: 1200
+          }));
+        }
+      } catch (err) {
+        showToast(err.message || 'Lỗi khi tìm đường bằng thuật toán A*');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // AWS Routing
     setLoading(true);
     try {
       const data = await getDirections(start, end);
-      setDirections(data);
+      setDirections({
+        ...data,
+        algorithm: 'AWS'
+      });
       setPlaces([]); 
       
-      // Gửi log Cloud khi tìm đường thành công
       await saveHistory({ 
-        query: `Route: ${origin} to ${destination}`, 
-        name: `Search: Directions to ${destination}` 
+        query: `Route (AWS): ${origin} to ${destination}`, 
+        name: `AWS Route to ${destination}` 
       });
-
 
       if (data.geometry && data.geometry.length > 0) {
         setViewState(prev => ({
@@ -358,7 +414,7 @@ useEffect(() => {
     // Log history
     saveHistory({ 
       query: query || 'Select', 
-      name: `Place: ${place.name}`, 
+      name: place.name, 
       lat: place.lat, 
       lng: place.lng 
     });
@@ -411,6 +467,48 @@ useEffect(() => {
 
     } catch (err) {
       showToast(err.message || "Lỗi khi tạo lộ trình AI");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTripPlannerRoute = async (waypoints) => {
+    setLoading(true);
+    try {
+      const data = await findLocalRoute(waypoints);
+      const baseDuration = Math.round(data.totalDistanceKm * 2);
+      const finalDuration = Math.round(baseDuration * (data.trafficFactor || 1.0));
+      setDirections({
+        distance: { text: data.totalDistanceText },
+        duration: { text: `${finalDuration} phút` }, 
+        geometry: data.geometry,
+        algorithm: 'A*',
+        trafficFactor: data.trafficFactor || 1.0,
+        congested: data.congested || false
+      });
+      
+      // Biến đổi các stops lịch trình thành danh sách markers để hiện trên bản đồ
+      setPlaces(waypoints.map((wp, idx) => ({
+        placeId: wp.id,
+        name: `${idx + 1}. ${wp.name}`,
+        lat: wp.lat,
+        lng: wp.lng,
+        address: `Tọa độ: ${wp.lat.toFixed(4)}, ${wp.lng.toFixed(4)}`
+      })));
+
+      showToast('Đã vẽ lịch trình du lịch thông minh bằng thuật toán A* lên bản đồ! 🗺️');
+
+      if (data.geometry && data.geometry.length > 0) {
+        setViewState(prev => ({
+          ...prev,
+          longitude: data.geometry[0][0],
+          latitude: data.geometry[0][1],
+          zoom: 13,
+          transitionDuration: 1200
+        }));
+      }
+    } catch (err) {
+      showToast('Lỗi khi vẽ đường đi của lịch trình: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -567,7 +665,7 @@ useEffect(() => {
                 type="line"
                 layout={{ 'line-join': 'round', 'line-cap': 'round' }}
                 paint={{
-                  'line-color': '#EAFF00',
+                  'line-color': directions?.algorithm === 'A*' ? '#00E676' : '#4318FF',
                   'line-width': 6,
                   'line-opacity': 0.8
                 }}
@@ -764,7 +862,10 @@ useEffect(() => {
                 <span>MAPVIT</span>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {user?.email === 'admin@gmail.com' && (
+                <button className="btn-icon-sm" onClick={() => setShowTripPlanner(true)} title="Lên lịch trình thông minh (CSP)" style={{ color: '#01B574' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                </button>
+                {['admin@gmail.com', 'dc1@gmail.com'].includes(user?.email) && (
                   <button className="btn-icon-sm" onClick={() => navigate('/analytics')} title="Cloud Analytics" style={{ color: '#3A82F7' }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
                   </button>
@@ -790,35 +891,7 @@ useEffect(() => {
               </button>
             </div>
           </div>
-<div className="recommend-box">
-    <h3>⭐ Gợi ý cho bạn</h3>
 
-    {recommendations.length === 0 ? (
-        <p>Chưa có gợi ý</p>
-    ) : (
-        recommendations.map(place => (
-            <div
-                key={place.placeId}
-                className="recommend-item"
-                onClick={() => {
-                    setSelectedPlace(place);
-
-                    setViewState(prev => ({
-                        ...prev,
-                        longitude: place.lng,
-                        latitude: place.lat,
-                        zoom: 15,
-                        transitionDuration: 1000
-                    }));
-                }}
-            >
-                <strong>{place.name}</strong>
-                <br />
-                <small>{place.address}</small>
-            </div>
-        ))
-    )}
-</div>
           <div className="panel-content">
             {activeTab === 'search' && (
               <form onSubmit={handleSearch} className="modern-search-row">
@@ -842,6 +915,54 @@ useEffect(() => {
                   </div>
                 </button>
               </form>
+            )}
+
+            {/* ⭐ Gợi ý Naive Bayes — chỉ hiện khi đang ở tab search và chưa có kết quả tìm kiếm */}
+            {activeTab === 'search' && recommendations.length > 0 && (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#A3AED0', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '8px', paddingLeft: '2px' }}>
+                  ⭐ Gợi ý cho bạn
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {recommendations.slice(0, 4).map(place => (
+                    <div
+                      key={place.placeId}
+                      onClick={() => {
+                        setSelectedPlace(place);
+                        setViewState(prev => ({
+                          ...prev,
+                          longitude: place.lng,
+                          latitude: place.lat,
+                          zoom: 15,
+                          transitionDuration: 800
+                        }));
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '10px 12px', borderRadius: '12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        cursor: 'pointer', transition: 'background 0.2s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                    >
+                      <div style={{ fontSize: '20px', flexShrink: 0 }}>
+                        {place.category === 'coffee' ? '☕' : place.category === 'restaurant' ? '🍜' : place.category === 'hotel' ? '🏨' : place.category === 'hospital' ? '🏥' : '📍'}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {place.name}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#A3AED0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {place.address}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#A3AED0' }}>›</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
 
             {activeTab === 'directions' && (
@@ -910,27 +1031,124 @@ useEffect(() => {
                   )}
                 </div>
                 
-                <button type="submit" className="btn-art" disabled={loading || !origin || !destination}>
-                  {loading ? 'Đang tính toán...' : 'Chỉ đường đi'}
-                </button>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                  <button 
+                    type="button" 
+                    className="btn-art" 
+                    style={{ 
+                      flex: 1, 
+                      backgroundColor: '#4318FF', 
+                      color: 'white',
+                      textTransform: 'none', 
+                      letterSpacing: 'normal', 
+                      fontSize: '13px', 
+                      padding: '10px 14px', 
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                    disabled={loading || !origin || !destination}
+                    onClick={(e) => handleDirections(e, 'AWS')}
+                  >
+                    <span>☁️</span> AWS Route
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn-art" 
+                    style={{ 
+                      flex: 1, 
+                      backgroundColor: '#01B574', 
+                      color: 'white',
+                      textTransform: 'none', 
+                      letterSpacing: 'normal', 
+                      fontSize: '13px', 
+                      padding: '10px 14px', 
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                    disabled={loading || !origin || !destination}
+                    onClick={(e) => handleDirections(e, 'A*')}
+                  >
+                    <span>🧠</span> A* (Tự cài)
+                  </button>
+                </div>
               </form>
             )}
 
             {directions && (
-              <div className="directions-result-container">
-                <div className="route-summary">
+              <div className="directions-result-container" style={{ padding: '20px 24px 0', borderTop: '1px solid rgba(255, 255, 255, 0.08)', marginTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '11px', color: '#A3AED0', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Kết quả tìm đường
+                  </span>
+                  <span style={{
+                    fontSize: '11px',
+                    backgroundColor: directions.algorithm === 'A*' ? '#01B574' : '#4318FF',
+                    color: 'white',
+                    padding: '3px 8px',
+                    borderRadius: '20px',
+                    fontWeight: '700',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {directions.algorithm === 'A*' ? '🧠 A* Heuristic' : '☁️ AWS Location'}
+                  </span>
+                </div>
+
+                {/* ⚠️ Cảnh báo Kẹt xe động của thuật toán A* */}
+                {directions.algorithm === 'A*' && directions.congested && (
+                  <div style={{
+                    backgroundColor: 'rgba(255, 142, 83, 0.12)',
+                    border: '1px solid rgba(255, 142, 83, 0.3)',
+                    color: '#FF8E53',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    marginBottom: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <span>⚠️</span> Kẹt xe cao điểm (Hệ số: {directions.trafficFactor}x)
+                  </div>
+                )}
+
+                <div className="route-summary" style={{ margin: '0 0 16px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
                   <div className="route-stat">
-                    <div className="route-val">{directions.distance?.text}</div>
+                    <div className="route-val" style={{ color: directions.algorithm === 'A*' ? '#00E676' : '#4318FF' }}>{directions.distance?.text}</div>
                     <div className="route-lbl">Khoảng cách</div>
                   </div>
                   <div className="route-stat">
-                    <div className="route-val">{directions.duration?.text}</div>
+                    <div className="route-val" style={{ color: directions.algorithm === 'A*' ? '#00E676' : '#4318FF' }}>{directions.duration?.text}</div>
                     <div className="route-lbl">Thời gian</div>
                   </div>
                 </div>
                 <button 
                   className="btn-art" 
-                  style={{ width: '100%', marginTop: '12px', backgroundColor: isSimulating ? '#ff4757' : '#2ed573' }}
+                  style={{ 
+                    width: '100%', 
+                    marginTop: '0px', 
+                    backgroundColor: isSimulating ? '#ff4757' : (directions.algorithm === 'A*' ? '#01B574' : '#4318FF'),
+                    color: 'white',
+                    textTransform: 'none',
+                    letterSpacing: 'normal',
+                    fontSize: '14px',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    fontWeight: '700',
+                    boxShadow: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
                   onClick={() => {
                     if (isSimulating) {
                        window.speechSynthesis.cancel();
@@ -941,7 +1159,7 @@ useEffect(() => {
                     }
                   }}
                 >
-                  {isSimulating ? 'Dừng đi đường' : '🎙️ Bắt đầu đi (VietMap AI)'}
+                  {isSimulating ? '⏹️ Dừng đi đường' : '🎙️ Bắt đầu đi (VietMap AI)'}
                 </button>
               </div>
             )}
@@ -1127,6 +1345,14 @@ useEffect(() => {
             )}
           </div>
         </div>
+      )}
+
+      {showTripPlanner && (
+        <TripPlanner 
+          onClose={() => setShowTripPlanner(false)} 
+          onRouteResult={handleTripPlannerRoute}
+          userLocation={{ lat: viewState.latitude, lng: viewState.longitude }}
+        />
       )}
 
       {toast && <div className="art-toast">{toast}</div>}

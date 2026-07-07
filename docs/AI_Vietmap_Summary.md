@@ -7,17 +7,16 @@ Dựa trên hai tài liệu `Task1.md` và `Task2_Advanced_AI.md`, dưới đây
 Dưới đây là danh sách các tính năng được liệt kê trong 2 Task, đã được đánh dấu trạng thái (hoàn thành hoặc chưa làm) dựa trên mã nguồn thực tế:
 
 ### Giai đoạn 1: Tích hợp AI Cơ bản (Sử dụng API Gemini)
-- [x] **AI Chatbot Tư vấn Địa điểm:** Viết controller xử lý chat với Gemini và tạo giao diện chat trên Web.
-- [ ] **AI Phân tích Xu hướng (Dashboard):** Lấy dữ liệu thống kê từ DynamoDB/Firestore đưa cho AI tóm tắt, hiển thị Insight Card.
-- [x] **Gợi ý Địa điểm Thông minh:** Đọc lịch sử tìm kiếm từ Firestore, dùng AI phân tích sở thích để gợi ý địa điểm. *(Đã có API suggestRoute)*
-- [x] **Smart Route Narration (Chỉ đường bằng giọng nói):** Phân tích dữ liệu tuyến đường (geometry) và dùng AI dịch thành hướng dẫn tự nhiên bằng tiếng Việt.
-- [ ] **Thuật toán Tìm đường A*:** Tự code thuật toán A* bằng JavaScript (tính khoảng cách Haversine) thay vì dùng API có sẵn.
+- [x] **AI Chatbot Tư vấn Địa điểm:** Viết controller xử lý chat với Gemini và tạo giao diện chat trên Web. ✔️ *Đã nâng cấp lên **Goal-based Agent** (Multi-turn Memory, quản lý session theo sessionId)*
+- [x] **AI Phân tích Xu hướng (Dashboard):** Lấy dữ liệu thống kê từ DynamoDB/Firestore đưa cho AI tóm tắt, hiển thị Insight Card. ✔️ *đã code `analyticsAIController.js` + UI Insight Card gradient trên AnalyticsPage*
+- [x] **Gợi ý Địa điểm Thông minh:** Đọc lịch sử tìm kiếm từ Firestore, dùng AI phân tích sở thích để gợi ý địa điểm. ✔️ *đã có API suggestRoute*
+- [x] **Smart Route Narration (Chỉ đường bằng giọng nói):** Phân tích dữ liệu tuyến đường (geometry) và dùng AI dịch thành hướng dẫn tự nhiên bằng tiếng Việt. ✔️ *Sử dụng **NLP (Gemini LLM)** — không phải thuật toán cổ điển, xem giải thích bên dưới*
+- [x] **Thuật toán Tìm đường A*:** Tự code thuật toán A* bằng JavaScript (tính khoảng cách Haversine) thay vì dùng API có sẵn. ✔️ *đã code `utils/aStar.js` với Min-Heap + Haversine heuristic + endpoint `/ai/local-route`*
 
 ### Giai đoạn 2: Trí tuệ Nhân tạo Nâng cao (Thuật toán Học thuật)
-- [ ] **Nâng cấp Chatbot (Goal-based Agent) - [Phụ trách: Du]:** Thêm bộ nhớ (memory/session/Redis) ở Backend để AI nhớ ngữ cảnh nhiều câu hội thoại liên tiếp và tích hợp vào UI.
-- [ ] **Smart Trip Planner (Phần Thuật toán CSP) - [Phụ trách: Hưng]:** Xây dựng logic thuật toán (Backend) giải quyết bài toán ràng buộc thời gian/địa điểm để xếp lịch trình tự động.
-- [ ] **Gợi ý Địa điểm (Thuật toán Naive Bayes) - [Phụ trách: Sanh]:** Tự code class NaiveBayes tính toán xác suất dựa trên lịch sử tìm kiếm từ Firestore và dữ liệu vị trí.
-- [ ] **Smart Trip Planner (Giao diện) & Tích hợp Frontend - [Phụ trách: Khánh]:** Thiết kế UI Timeline hiển thị lịch trình cho Trip Planner và tích hợp các dữ liệu AI của Giai đoạn 2 lên trang MapPage.
+- [x] **Smart Trip Planner (Phần Thuật toán CSP) - [Phụ trách: Hưng]:** Xây dựng logic thuật toán (Backend) giải quyết bài toán ràng buộc thời gian/địa điểm để xếp lịch trình tự động. ✔️ *đã code `utils/cspSolver.js` + Backtracking Search + endpoint `/ai/plan-trip`*
+- [x] **Gợi ý Địa điểm (Thuật toán Naive Bayes) - [Phụ trách: Sanh]:** Tự code class NaiveBayes tính toán xác suất dựa trên lịch sử tìm kiếm từ Firestore và dữ liệu vị trí. ✔️ *đã code `utils/bayesClassifier.js` đầy đủ với Prior + Likelihood + Laplace Smoothing, trả top-3 danh mục + xác suất*
+- [x] **Smart Trip Planner (Giao diện) & Tích hợp Frontend - [Phụ trách: Khánh]:** Thiết kế UI Timeline hiển thị lịch trình cho Trip Planner và tích hợp các dữ liệu AI của Giai đoạn 2 lên trang MapPage. ✔️ *đã code `components/TripPlanner.jsx` (Timeline UI + AI summary bằng Gemini)*
 
 ---
 

@@ -3,10 +3,12 @@ import { chatWithAI } from '../services/api';
 
 export default function AIChatPanel({ userLocation, handleVoiceNavigation, isListening }) {
   const [messages, setMessages] = useState([
-    { role: 'ai', text: 'Chào bạn! Mình là MAPVIT AI. Mình có thể giúp gì cho bạn hôm nay (tìm đường, gợi ý quán ngon, ...)?' }
+    { role: 'ai', text: 'Chào bạn! Mình là MAPVIT AI (🧠 Goal-based Agent). Mình nhớ được ngữ cảnh hội thoại để trả lời chính xác hơn. Bạn cần giúp gì nào?' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(null); // Multi-turn session
+  const [turnCount, setTurnCount] = useState(0);    // Số lượt hội thoại
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -27,7 +29,17 @@ export default function AIChatPanel({ userLocation, handleVoiceNavigation, isLis
     setLoading(true);
 
     try {
-      const response = await chatWithAI(userMsg, userLocation);
+      // Gửi kèm sessionId để backend duy trì lịch sử hội thoại (Multi-turn)
+      const response = await chatWithAI(userMsg, userLocation, sessionId);
+      
+      // Lưu sessionId từ server trả về (lần đầu tiên sẽ được cấp)
+      if (response.sessionId && !sessionId) {
+        setSessionId(response.sessionId);
+      }
+      if (response.turnCount !== undefined) {
+        setTurnCount(response.turnCount);
+      }
+
       setMessages(prev => [...prev, { role: 'ai', text: response.reply }]);
     } catch (err) {
       console.error('AI Chat Error:', err);
@@ -37,8 +49,32 @@ export default function AIChatPanel({ userLocation, handleVoiceNavigation, isLis
     }
   };
 
+  // Xóa session — Bắt đầu cuộc hội thoại mới
+  const clearSession = () => {
+    setSessionId(null);
+    setTurnCount(0);
+    setMessages([
+      { role: 'ai', text: 'Đã bắt đầu hội thoại mới! Mình quên hết ngữ cảnh cũ rồi. Bạn cần giúp gì nào? 🔄' }
+    ]);
+  };
+
   return (
     <div className="ai-chat-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
+      {/* Header với Turn Counter */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ fontSize: '12px', color: '#aaa' }}>
+          {turnCount > 0 ? (
+            <span>🧠 <strong style={{ color: '#3A82F7' }}>Goal-based Agent</strong> · {turnCount} lượt hội thoại</span>
+          ) : (
+            <span>🤖 MAPVIT AI</span>
+          )}
+        </div>
+        {turnCount > 0 && (
+          <button onClick={clearSession} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#aaa', padding: '4px 10px', borderRadius: '20px', cursor: 'pointer', fontSize: '11px' }}>
+            🔄 Cuộc trò chuyện mới
+          </button>
+        )}
+      </div>
       <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 4px' }}>
         {messages.map((msg, idx) => (
           <div key={idx} style={{

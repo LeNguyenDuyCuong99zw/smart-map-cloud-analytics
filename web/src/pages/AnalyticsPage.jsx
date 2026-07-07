@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import api from '../services/api';
+import api, { getAIAnalyticsInsight } from '../services/api';
 
 
 // URL API Lambda Analytics
@@ -14,11 +14,13 @@ export default function AnalyticsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeStatTab, setActiveStatTab] = useState('keywords'); // 'keywords' hoặc 'places'
+  const [activeStatTab, setActiveStatTab] = useState('keywords');
+  const [aiInsight, setAiInsight] = useState(null);
+  const [insightLoading, setInsightLoading] = useState(false);
 
 
   // KIỂM TRA QUYỀN ADMIN
-  const ADMIN_EMAIL = "admin@gmail.com"; 
+  const ADMIN_EMAILS = ["admin@gmail.com", "dc1@gmail.com"]; 
 
   useEffect(() => {
     if (!user) {
@@ -26,7 +28,7 @@ export default function AnalyticsPage() {
       return;
     }
     
-    if (user.email !== ADMIN_EMAIL) {
+    if (!ADMIN_EMAILS.includes(user.email)) {
       alert("Bạn không có quyền truy cập trang quản trị!");
       navigate('/');
       return;
@@ -41,16 +43,27 @@ export default function AnalyticsPage() {
       if (!ANALYTICS_API_URL) {
         throw new Error("Chưa cấu hình URL API Analytics trong .env");
       }
-      // const response = await axios.get(ANALYTICS_API_URL);
-      // Gọi qua backend proxy thay vì trực tiếp AWS để tránh CORS
       const data = await api.get('/analytics');
-      
       setData(data);
-
+      // Tự động tải AI Insight sau khi có dữ liệu analytics
+      fetchAIInsight();
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAIInsight = async () => {
+    setInsightLoading(true);
+    try {
+      const result = await getAIAnalyticsInsight();
+      setAiInsight(result);
+    } catch (err) {
+      console.warn('[AI Insight]', err.message);
+      // Không hiện lỗi nếu insight thất bại
+    } finally {
+      setInsightLoading(false);
     }
   };
 
@@ -115,6 +128,28 @@ export default function AnalyticsPage() {
             </div>
           </div>
         </div>
+
+        {/* AI INSIGHT CARD */}
+        {(aiInsight || insightLoading) && (
+          <div style={{ background: 'linear-gradient(135deg, #4318FF 0%, #7551FF 100%)', borderRadius: '20px', padding: '24px 28px', marginBottom: '24px', color: 'white', boxShadow: '0 10px 30px rgba(67,24,255,0.25)', display: 'flex', gap: '18px', alignItems: 'flex-start' }}>
+            <div style={{ fontSize: '32px', flexShrink: 0 }}>🤖</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>AI Analytics Insight · Gemini</div>
+              {insightLoading ? (
+                <div style={{ fontSize: '14px', opacity: 0.7 }}>Đang phân tích dữ liệu bằng AI...</div>
+              ) : (
+                <>
+                  <p style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.7', fontWeight: '500' }}>{aiInsight?.insight}</p>
+                  <div style={{ display: 'flex', gap: '20px', fontSize: '12px', opacity: 0.8 }}>
+                    {aiInsight?.stats?.topKeyword && <span>🔍 Top từ khóa: {aiInsight.stats.topKeyword}</span>}
+                    {aiInsight?.stats?.topPlace && <span>📍 Top địa điểm: {aiInsight.stats.topPlace}</span>}
+                    {aiInsight?.fromCache && <span>⚡ Cached</span>}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {error ? (
           <div style={{ backgroundColor: '#FFF0F0', borderLeft: '4px solid #E31A1A', padding: '20px', borderRadius: '12px', color: '#E31A1A', marginBottom: '30px' }}>

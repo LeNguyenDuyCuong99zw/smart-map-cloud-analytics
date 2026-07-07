@@ -9,7 +9,9 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1079.0",
     "@aws-sdk/client-location": "^3.1035.0",
+    "@aws-sdk/lib-dynamodb": "^3.1079.0",
     "@google-cloud/storage": "^5.20.4",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.7.2",
@@ -20,7 +22,8 @@
     "firebase-admin": "^10.1.0",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
-    "multer": "^2.1.1"
+    "multer": "^2.1.1",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",

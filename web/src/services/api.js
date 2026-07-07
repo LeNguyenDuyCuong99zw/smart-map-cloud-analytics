@@ -102,9 +102,9 @@ export const getHistory = (limit = 20) =>
 export const clearHistory = () =>
   api.delete('/history');
 
-/** Giao tiếp với AI Chatbot */
-export const chatWithAI = (message, locationContext) =>
-  api.post('/ai/chat', { message, locationContext });
+/** Giao tiếp với AI Chatbot (Multi-turn Goal-based Agent) */
+export const chatWithAI = (message, locationContext, sessionId = null) =>
+  api.post('/ai/chat', { message, locationContext, sessionId });
 
 /** Gợi ý lộ trình AI */
 export const suggestRouteWithAI = (prompt, origin) =>
@@ -113,5 +113,17 @@ export const suggestRouteWithAI = (prompt, origin) =>
 /** Sinh kịch bản giọng nói cho lộ trình */
 export const narrateRouteWithAI = (originName, destinationName, distanceText, durationText) =>
   api.post('/ai/narrate-route', { originName, destinationName, distanceText, durationText });
+
+/** Tìm đường bằng thuật toán A* (tự cài đặt) */
+export const findLocalRoute = (waypoints) =>
+  api.post('/ai/local-route', { waypoints });
+
+/** Lên lịch trình thông minh bằng CSP */
+export const planTripWithCSP = (places, maxHours = 8, startHour = 8) =>
+  api.post('/ai/plan-trip', { places, maxHours, startHour });
+
+/** Lấy AI Insight Card cho Dashboard Analytics */
+export const getAIAnalyticsInsight = () =>
+  api.get('/analytics/ai-insight');
 
 export default api;
